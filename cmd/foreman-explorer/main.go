@@ -1,10 +1,11 @@
-// foreman-explorer is a macOS menu bar app over foreman's core: glance at
-// projects and their participants, click one to pull its view into a
-// terminal window.
+// foreman-explorer is a menu bar (macOS) and tray (Linux) app over foreman's
+// core: glance at projects and their participants, click one to pull its
+// view into a terminal window. Platform integration — dialogs,
+// notifications, the icon, the login agent — lives in the _darwin and
+// _linux files.
 package main
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -69,16 +70,8 @@ func setupCrashLog() {
 	log.SetOutput(io.MultiWriter(os.Stderr, f))
 }
 
-// The menu bar icon is the foreman mark rendered black-on-transparent — a
-// macOS template image, so the system recolors it for light/dark menu bars.
-// Derived from docs/assets/logo/logo-mark.svg (regeneration recipe in the
-// logo README).
-//
-//go:embed icon-template.png
-var iconTemplate []byte
-
 func onReady() {
-	systray.SetTemplateIcon(iconTemplate, iconTemplate)
+	setTrayIcon()
 	systray.SetTooltip("foreman — terminals by project")
 	// All menu work happens on this one goroutine — the timer and manual
 	// Refresh both feed it, so the done channel and the systray menu are
@@ -130,11 +123,14 @@ func requestForceRebuild() {
 // done is closed on every menu rebuild so click-listener goroutines from the
 // previous menu generation exit instead of leaking. lastShape fingerprints
 // the structure last built; participantItems are the live handles for
-// in-place label updates between rebuilds (keyed by tmux window id). Only
-// the refresher goroutine touches any of them.
+// in-place label updates between rebuilds (keyed by tmux window id), and
+// shownLabels what each currently reads — an unchanged label isn't re-set,
+// since on Linux every set is two D-Bus signals. Only the refresher
+// goroutine touches any of them.
 var done chan struct{}
 var lastShape = "\x00never built"
 var participantItems map[string]*systray.MenuItem
+var shownLabels map[string]string
 
 // refresh is one tick: sweep, observe every participant (the notification
 // pass), then render. The menu is torn down and rebuilt only when its shape
@@ -160,8 +156,9 @@ func refresh(force bool) {
 		return
 	}
 	for id, item := range participantItems {
-		if label, ok := labels[id]; ok {
+		if label, ok := labels[id]; ok && label != shownLabels[id] {
 			item.SetTitle(label)
+			shownLabels[id] = label
 		}
 	}
 }
@@ -217,6 +214,7 @@ func rebuildMenu(projects []core.Project, labels map[string]string, roles, dorma
 	done = make(chan struct{})
 	systray.ResetMenu()
 	participantItems = map[string]*systray.MenuItem{}
+	shownLabels = map[string]string{}
 
 	if len(projects) == 0 {
 		systray.AddMenuItem("no projects", "").Disable()
@@ -277,6 +275,7 @@ func buildProjectMenu(p core.Project, labels map[string]string, roles []string, 
 	for _, w := range p.Windows {
 		item := systray.AddMenuItem(labels[w.ID], "click to open here")
 		participantItems[w.ID] = item
+		shownLabels[w.ID] = labels[w.ID]
 		project, role := p.Name, w.RoleName()
 		listen(item, d, func() { openInTerminal(project, role) })
 	}
@@ -433,12 +432,18 @@ func execFm(args ...string) bool {
 }
 
 // listen fires fn on every click of item until this menu generation is torn
-// down (d closes), so listener goroutines never outlive their menu.
+// down (d closes), so listener goroutines never outlive their menu. A rebuild
+// also closes ClickedCh; a listener still inside a dialog would otherwise
+// find both cases ready, and select picking the closed channel would run fn
+// a second time.
 func listen(item *systray.MenuItem, d chan struct{}, fn func()) {
 	go func() {
 		for {
 			select {
-			case <-item.ClickedCh:
+			case _, ok := <-item.ClickedCh:
+				if !ok {
+					return
+				}
 				safely(fn)
 			case <-d:
 				return
@@ -484,54 +489,6 @@ func stateMark(s core.State) string {
 		return "○"
 	}
 	return ""
-}
-
-// confirmDone asks before teardown — "closing is harmless, ending is
-// explicit": a menu misclick must never kill a participant (issue #72).
-// The message travels as an osascript argument (#30 rule). Bounded like all
-// automation (#62) but on a human scale: the dialog gives itself up after
-// 60s (with a Go-side backstop), and anything but an explicit Done — cancel,
-// give-up, timeout, error — answers no.
-func confirmDone(project, role string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
-	defer cancel()
-	err := exec.CommandContext(ctx, "osascript",
-		"-e", "on run argv",
-		"-e", `set r to display dialog (item 1 of argv) with title "foreman" buttons {"Cancel", "Done"} default button "Cancel" cancel button "Cancel" with icon caution giving up after 60`,
-		"-e", `if gave up of r then error number -128`,
-		"-e", "end run",
-		fmt.Sprintf("End %s in project %s? Its terminal closes for real.", role, project)).Run()
-	return err == nil
-}
-
-// promptText asks for a line of text in a dialog, prefilled with def; ok
-// labels the confirming button. Same rules as confirmDone: the strings
-// travel as osascript arguments (#30), the dialog gives itself up after 60s
-// with a Go-side backstop (#62), and anything but an explicit ok — cancel,
-// give-up, timeout, error, an emptied field — returns "" and means no.
-func promptText(msg, def, ok string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "osascript",
-		"-e", "on run argv",
-		"-e", `set r to display dialog (item 1 of argv) with title "foreman" default answer (item 2 of argv) buttons {"Cancel", item 3 of argv} default button 2 cancel button "Cancel" giving up after 60`,
-		"-e", `if gave up of r then error number -128`,
-		"-e", `return text returned of r`,
-		"-e", "end run",
-		msg, def, ok).Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// notify posts a macOS notification; the message travels as an osascript
-// argument, never interpolated into the script (same rule as issue #30).
-func notify(msg string) {
-	exec.Command("osascript",
-		"-e", "on run argv",
-		"-e", `display notification (item 1 of argv) with title "foreman"`,
-		"-e", "end run", msg).Run()
 }
 
 // openInTerminal opens a window in the configured terminal app running

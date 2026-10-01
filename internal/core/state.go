@@ -43,7 +43,7 @@ func ListProjects() ([]Project, error) {
 	return projects, nil
 }
 
-var shells = map[string]bool{"zsh": true, "bash": true, "fish": true, "sh": true, "-zsh": true, "-bash": true}
+var shells = map[string]bool{"zsh": true, "bash": true, "fish": true, "sh": true, "dash": true, "ksh": true, "-zsh": true, "-bash": true}
 
 // WindowStatus describes what a participant is doing, for humans.
 func WindowStatus(w Window) string {

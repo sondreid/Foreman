@@ -10,6 +10,22 @@ minor = features (breaking changes allowed), patch = fixes.
 
 ### Added
 
+- **The explorer runs on Linux.** On Ubuntu and Fedora (GNOME or KDE) `fm-explorer` is a
+  system tray app with the macOS menu's behaviour: projects and participants with live
+  state, click to open, New participant / New project… / Rename… / Done…, notifications
+  when a pinned project starts waiting. Dialogs use `zenity`, notifications the desktop's
+  notification service, and `install-agent` writes a systemd user unit that starts with
+  the graphical session and restarts only on a crash — with `KillMode=process`, so a
+  restart never takes down a tmux server the explorer happened to start. Requires a tray
+  (on Fedora GNOME: the AppIndicator extension) and `zenity` (preinstalled on Ubuntu
+  GNOME only).
+
+- **`go --window` and explorer clicks open Linux terminals.** `[terminal] app` takes
+  `xdg-terminal-exec`, `ptyxis`, `gnome-terminal`, `konsole` or `ghostty`; unset picks
+  the first on PATH (`ghostty` needs 1.2+). The view runs through `sh`, so a failing `fm`
+  keeps the window open with its error until Enter, and a successful one closes it when
+  the view moves away.
+
 - **The terminal app is configurable.** `[terminal] app` in the config picks where foreman
   opens windows (explorer clicks, `go --window`): `terminal` for Terminal.app, still the
   default when unset, or `ghostty` (1.3+). Ghostty windows are not tracked — Ghostty exposes
@@ -31,6 +47,16 @@ minor = features (breaking changes allowed), patch = fixes.
   closed the window out from under the user (the participant lived on, reachable from the
   menu). Strikes now carry a timestamp, and a window is only closed once its strike has
   aged a full sweep cycle — absence measured in wall-clock time, not sweep count. Closes #95.
+
+- **foreman works when tmux's client locale isn't UTF-8.** tmux 3.4+ prints every
+  non-printable byte of `-F` output as `_` under `LANG=C` or an unset locale, which turned
+  foreman's tab-separated listings into one field — every project vanished — and erased
+  the ✳/braille title marks behind `waiting`/`working`. foreman now runs its tmux queries
+  with `-u`. Hit by default in containers and minimal service environments.
+
+- **An explorer action no longer runs twice when the menu rebuilds during its dialog.** A
+  rebuild closes the old items' click channels; a listener still inside a Done…/Rename…
+  dialog could then read the closed channel and run its action again.
 
 ## [0.9.0] - 2026-08-05
 

@@ -12,7 +12,7 @@ and the design discussion; the commit/PR closes it (`Closes #N`). Small drive-by
 the issue, but anything worth a CHANGELOG entry is worth an issue.
 
 Labels: the GitHub defaults (`bug`, `enhancement`, `documentation`, …) plus domain labels —
-`core` (tmux layer, `internal/core`), `cli` (command surface), `explorer` (menu bar app),
+`core` (tmux layer, `internal/core`), `cli` (command surface), `explorer` (menu bar / tray app),
 `config` (config.toml / role presets), `observation` (the observation-layer epic), `infra`
 (build, tooling, CI).
 

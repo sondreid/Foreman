@@ -116,7 +116,9 @@ cmd = "claude"
 # root = "~/code/project-a"
 
 # The app foreman opens windows in (explorer clicks, go --window).
-# Supported: "terminal" (Terminal.app, used when unset), "ghostty" (1.3+).
+# macOS: "terminal" (Terminal.app, used when unset), "ghostty" (1.3+).
+# Linux: "xdg-terminal-exec", "ptyxis", "gnome-terminal", "konsole",
+# "ghostty" (1.2+); unset picks the first on PATH.
 # [terminal]
 # app = "terminal"
 `

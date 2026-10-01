@@ -77,7 +77,8 @@ $ foreman list
 
 ## Install
 
-Requires `tmux` (`brew install tmux`).
+Requires `tmux` — `brew install tmux` on macOS, `sudo apt install tmux` on
+Ubuntu, `sudo dnf install tmux` on Fedora.
 
 ```
 make install                    # foreman + fm symlink + fm-explorer into ~/.local/bin
@@ -86,9 +87,9 @@ make install                    # foreman + fm symlink + fm-explorer into ~/.loc
 (`make help` lists the other targets; `BIN=/somewhere make install` to install
 elsewhere on PATH.)
 
-## Explorer (menu bar app)
+## Explorer (menu bar / tray app)
 
-A macOS menu bar companion: glance at every project and participant, click one
+A menu bar (macOS) and system tray (Linux) companion: glance at every project and participant, click one
 to pull its view into a terminal window (same move semantics as `go`). Each
 project's menu also *acts*: create a participant or a brand-new project by
 name, pin/unpin, rename, or end one (behind a confirmation) — every action is
@@ -96,7 +97,7 @@ the matching `fm` command, so the explorer never knows anything the CLI
 doesn't.
 
 Two ways to run it (installed by `make install`; either way it shows the
-foreman mark in the menu bar):
+foreman mark in the menu bar or tray):
 
 ```
 fm-explorer install-agent       # recommended: starts now and on every login,
@@ -106,10 +107,23 @@ fm-explorer &                   # quick and manual — but dies with the termina
                                 # to outlive it)
 ```
 
-`install-agent` registers a macOS login item (a LaunchAgent); `uninstall-agent`
-removes it. Quitting from the menu stays quit — the agent only relaunches on a
-crash, not on a deliberate Quit. Crashes are logged to
-`~/.local/state/foreman/explorer.log`.
+`install-agent` registers a login item — a LaunchAgent on macOS, a systemd
+user unit (`foreman-explorer.service`) on Linux; `uninstall-agent` removes it.
+Quitting from the menu stays quit — the agent only relaunches on a crash, not
+on a deliberate Quit. Crashes are logged to
+`~/.local/state/foreman/explorer.log` (on Linux also
+`journalctl --user -u foreman-explorer`).
+
+On Linux the explorer needs a tray and, for its dialogs (Done…, Rename…,
+New project…), `zenity`:
+
+- **Ubuntu** (GNOME) ships both — the tray via the preinstalled AppIndicator
+  extension.
+- **Fedora** (GNOME) ships neither:
+  `sudo dnf install zenity gnome-shell-extension-appindicator`, then
+  `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com` and log out
+  and back in.
+- **KDE Plasma** has a tray built in; install `zenity` (Kubuntu, Fedora KDE).
 
 The menu re-reads state every 10 seconds — participant labels update in place,
 and the menu is only rebuilt when projects or participants come or go, so it
@@ -131,7 +145,7 @@ cmd = "claude"
 root = "~/code/project-a"
 
 [terminal]
-app = "terminal"
+app = "terminal"                # macOS; on Linux e.g. "ptyxis"
 ```
 
 `new` starts terminals in the role's `dir`, else the project `root`, else your
@@ -140,15 +154,17 @@ the process exiting. Unknown roles just get a plain shell — manual-work
 terminals are first-class participants.
 
 `[terminal] app` picks the app foreman opens windows in (explorer clicks,
-`go --window`): `terminal` for Terminal.app, the default when unset, or
-`ghostty`.
+`go --window`). On macOS: `terminal` for Terminal.app, the default when unset,
+or `ghostty`. On Linux: `xdg-terminal-exec`, `ptyxis`, `gnome-terminal`,
+`konsole` or `ghostty` (1.2+); unset picks the first of these on PATH, in that
+order.
 
 ## Observation
 
 foreman tells you what every participant is doing without attaching: `foreman list` shows a
 STATE per terminal (`working`, `waiting⚠`, `done○`, `shell`, `exited`), the status bar of
 each managed terminal tickers who's waiting in *other* projects, and the explorer posts a
-macOS notification when an agent in a **pinned** project starts waiting. Detection reads
+desktop notification when an agent in a **pinned** project starts waiting. Detection reads
 what agents announce (Claude Code signals busy/idle in its pane title) with a careful
 content fallback — see [how it works](docs/how-it-works.md).
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -60,10 +61,18 @@ var runOsascript = func(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+// goos is the platform OpenTerminal opens windows for; a seam so the macOS
+// and Linux openers are both tested on any CI runner.
+var goos = runtime.GOOS
+
 // OpenTerminal opens a window running shellCmd in the configured terminal
-// app: "terminal" (Terminal.app, also when unset) or "ghostty". An unknown
-// app is an error rather than a silent fallback.
+// app. On macOS: "terminal" (Terminal.app, also when unset) or "ghostty"; on
+// Linux see linuxTerminals. An unknown app is an error rather than a silent
+// fallback.
 func OpenTerminal(app, shellCmd string) error {
+	if goos != "darwin" {
+		return openLinuxTerminal(app, shellCmd)
+	}
 	switch app {
 	case "", "terminal":
 		return openTermWindow(shellCmd)

@@ -13,9 +13,12 @@ import (
 )
 
 // tmuxRun executes the tmux binary; a seam so tests can substitute canned
-// output (issue #20).
+// output (issue #20). -u because tmux 3.4+ prints every non-printable byte
+// of -F output as "_" when the client's locale isn't UTF-8 (LANG unset or C,
+// as under some service managers and containers): the tab field separators
+// and the ✳/braille title marks that observation reads would all be lost.
 var tmuxRun = func(args ...string) ([]byte, error) {
-	return exec.Command("tmux", args...).CombinedOutput()
+	return exec.Command("tmux", append([]string{"-u"}, args...)...).CombinedOutput()
 }
 
 // Tmux runs a tmux command and returns trimmed stdout.

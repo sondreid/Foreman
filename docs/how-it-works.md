@@ -75,7 +75,7 @@ process needs to exist to keep the ticker fresh.
 
 Notifications are different in kind: "an agent *just started* waiting" is a statement about
 **change**, and you can only notice a change by remembering the last look. Something also
-has to keep looking. foreman gives both jobs to the explorer (the menu bar app), which wakes
+has to keep looking. foreman gives both jobs to the explorer (the menu bar or tray app), which wakes
 every ten seconds anyway — and true to the rule above, even its memory of "what I saw last
 time" is stored as labels on the tmux windows, not in the app.
 

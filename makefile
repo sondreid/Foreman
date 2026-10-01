@@ -29,7 +29,7 @@ uninstall:
 	rm -f $(BIN)/foreman $(BIN)/fm $(BIN)/fm-explorer
 
 # Detached ad-hoc run: survives closing this shell. For start-on-login use
-# `fm-explorer install-agent` instead (launchd, restarts on crash).
+# `fm-explorer install-agent` instead (launchd or systemd, restarts on crash).
 start: build
 	@nohup ./foreman-explorer >/dev/null 2>&1 &
 	@echo "foreman explorer started (detached) — logs: ~/.local/state/foreman/explorer.log"

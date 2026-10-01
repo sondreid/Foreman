@@ -51,6 +51,14 @@ func trackingFake(listing, clients string) func(args []string) (string, bool) {
 	}
 }
 
+// fixGOOS pins the platform OpenTerminal dispatches on; restored via t.Cleanup.
+func fixGOOS(t *testing.T, platform string) {
+	t.Helper()
+	orig := goos
+	t.Cleanup(func() { goos = orig })
+	goos = platform
+}
+
 // fixNow pins the sweep's clock; restored via t.Cleanup.
 func fixNow(t *testing.T, ts int64) {
 	t.Helper()
@@ -85,6 +93,7 @@ func TestTermWinKey(t *testing.T) {
 }
 
 func TestOpenTerminalRecordsWindow(t *testing.T) {
+	fixGOOS(t, "darwin")
 	tmuxCalls, _ := recordCalls(t, trackingFake("", ""), "/dev/ttys042\n77")
 	if err := OpenTerminal("", "'fm' 'A' go 'coder'"); err != nil {
 		t.Fatal(err)
@@ -96,6 +105,7 @@ func TestOpenTerminalRecordsWindow(t *testing.T) {
 }
 
 func TestOpenTerminalPurgesRecycledTty(t *testing.T) {
+	fixGOOS(t, "darwin")
 	// Window 60's shell already exited; its pty was recycled to the window
 	// being opened. The stale entry must be closed out, not left to shadow
 	// the new one in the sweep (issue #56).
@@ -117,6 +127,7 @@ func TestOpenTerminalPurgesRecycledTty(t *testing.T) {
 }
 
 func TestOpenTerminalRejectsMalformedReply(t *testing.T) {
+	fixGOOS(t, "darwin")
 	// A reply that doesn't parse means an untracked window — that's an
 	// error, not a success (issue #61).
 	for _, reply := range []string{"", "onlyoneline", "notatty\n77", "/dev/ttys042\nNaN"} {
@@ -128,6 +139,7 @@ func TestOpenTerminalRejectsMalformedReply(t *testing.T) {
 }
 
 func TestOpenTerminalFailsWhenTrackingNotPersisted(t *testing.T) {
+	fixGOOS(t, "darwin")
 	fake := func(args []string) (string, bool) {
 		if args[0] == "set-option" {
 			return "", false // persistence fails
@@ -141,6 +153,7 @@ func TestOpenTerminalFailsWhenTrackingNotPersisted(t *testing.T) {
 }
 
 func TestOpenTerminalGhosttyIsUntracked(t *testing.T) {
+	fixGOOS(t, "darwin")
 	// Ghostty exposes no tty to match a tmux client against, so nothing is
 	// recorded; the typed exit closes the window once fm returns.
 	tmuxCalls, osaCalls := recordCalls(t, trackingFake("", ""), "")
@@ -157,6 +170,7 @@ func TestOpenTerminalGhosttyIsUntracked(t *testing.T) {
 }
 
 func TestOpenTerminalRejectsUnknownApp(t *testing.T) {
+	fixGOOS(t, "darwin")
 	// A typo in [terminal] must not silently open Terminal.app instead.
 	_, osaCalls := recordCalls(t, trackingFake("", ""), "")
 	if err := OpenTerminal("iterm", "'fm' 'A' go 'coder'"); err == nil {
