@@ -26,7 +26,7 @@ func StateOf(cfg Config, w Window) State {
 		return StateExited
 	}
 	if shells[w.Command] {
-		if cfg.Roles[w.RoleName()].Cmd != "" {
+		if r, _ := cfg.Role(w.RoleName()); r.Cmd != "" {
 			return StateDone
 		}
 		return StateShell

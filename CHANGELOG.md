@@ -19,6 +19,11 @@ minor = features (breaking changes allowed), patch = fixes.
 
 ### Changed
 
+- **A second `new <role>` in a project creates a numbered participant** (`coder-2`,
+  `coder-3`, …) instead of refusing with a pointer to `go`. The numbered participant runs
+  the base role's preset and reports `done` like it; a name that is itself a configured
+  role is skipped. The explorer's "New participant" entries stay enabled for roles the
+  project already has and open the participant actually created.
 - **The explorer reports a window that fails to open.** A click whose window could not be
   opened or tracked used to do nothing; the error now arrives as a notification.
 

@@ -32,49 +32,52 @@ func cmdNew(project, role string) error {
 	}
 	cfg := core.LoadConfig()
 	dir := cfg.WorkDir(project, role)
+	name := role
 	var wid string
 	var err error
 	if !core.SessionExists(project) {
-		wid, err = core.Tmux("new-session", "-d", "-s", core.SessionName(project), "-n", role,
+		wid, err = core.Tmux("new-session", "-d", "-s", core.SessionName(project), "-n", name,
 			"-c", dir, "-P", "-F", "#{window_id}")
 	} else {
-		if w, ferr := core.FindWindow(project, role); ferr == nil {
-			return fmt.Errorf("project %s already has a %q terminal (%s) — use: foreman %s go %s",
-				project, role, w.ID, project, role)
+		ws, lerr := core.ListWindows(project)
+		if lerr != nil {
+			return lerr
 		}
+		name = core.FreeRoleName(ws, cfg, role)
 		// -d: create in the background. Without it, new from inside an
 		// attached terminal jumps the view before the go prompt below has
 		// asked (issue #54) — moving the view is go's job alone.
-		wid, err = core.Tmux("new-window", "-d", "-t", "="+core.SessionName(project), "-n", role,
+		wid, err = core.Tmux("new-window", "-d", "-t", "="+core.SessionName(project), "-n", name,
 			"-c", dir, "-P", "-F", "#{window_id}")
 	}
 	if err != nil {
 		return err
 	}
-	core.Tmux("set-option", "-w", "-t", wid, "@fm_role", role)
+	core.Tmux("set-option", "-w", "-t", wid, "@fm_role", name)
 	core.Tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
 	core.StyleSession(project)
 
 	// Role commands run inside the shell (not as the window command) so the
 	// window survives the process exiting.
-	if cmd := cfg.Roles[role].Cmd; cmd != "" {
-		if _, err := core.Tmux("send-keys", "-t", wid, "-l", cmd); err != nil {
+	preset, known := cfg.Role(role)
+	if preset.Cmd != "" {
+		if _, err := core.Tmux("send-keys", "-t", wid, "-l", preset.Cmd); err != nil {
 			return err
 		}
 		if _, err := core.Tmux("send-keys", "-t", wid, "Enter"); err != nil {
 			return err
 		}
 	}
-	fmt.Printf("created %s/%s in %s\n", project, role, dir)
+	fmt.Printf("created %s/%s in %s\n", project, name, dir)
 	// Only unknown roles get the notice — a role deliberately configured
 	// without a cmd (a named plain shell) already explained itself.
-	if _, known := cfg.Roles[role]; !known {
+	if !known {
 		fmt.Printf("note: role %q has no cmd in %s — opened a plain shell\n", role, core.ConfigPath())
 	}
 	// The typical next step is go, so offer it. Only on a TTY — scripted
 	// use creates without going, as before.
 	if stdinIsTTY() {
-		fmt.Printf("go to %s? [Y/n] ", role)
+		fmt.Printf("go to %s? [Y/n] ", name)
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 		if err != nil {
 			// EOF or a broken stdin is not an answer — never go on it.
@@ -82,12 +85,12 @@ func cmdNew(project, role string) error {
 			return nil
 		}
 		if ans := strings.ToLower(strings.TrimSpace(line)); ans == "" || ans == "y" || ans == "yes" {
-			return cmdGo(project, role, false)
+			return cmdGo(project, name, false)
 		}
 		return nil
 	}
 	if !core.InsideTmux() {
-		fmt.Printf("  foreman %s go %s   # to jump there\n", project, role)
+		fmt.Printf("  foreman %s go %s   # to jump there\n", project, name)
 	}
 	return nil
 }
@@ -243,8 +246,8 @@ func adoptPlainTerminal(project, role string) error {
 	core.Tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
 	fmt.Printf("a running shell can't move into tmux — created %s/%s in %s instead\n",
 		project, role, dir)
-	if cmd := core.LoadConfig().Roles[role].Cmd; cmd != "" {
-		fmt.Printf("note: role %q has a cmd, which adopt does not run: %s\n", role, cmd)
+	if r, _ := core.LoadConfig().Role(role); r.Cmd != "" {
+		fmt.Printf("note: role %q has a cmd, which adopt does not run: %s\n", role, r.Cmd)
 	}
 	// Attaching needs a real terminal — scripted use creates without going,
 	// same contract as new (issue #28), instead of dying half-done on the

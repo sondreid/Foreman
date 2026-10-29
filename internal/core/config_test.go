@@ -105,3 +105,13 @@ func TestWorkDirPrecedence(t *testing.T) {
 		t.Errorf("cwd fallback: got %q, want %q", got, wd)
 	}
 }
+
+func TestRoleResolvesNumberedParticipants(t *testing.T) {
+	cfg := Config{Roles: map[string]Role{"coder": {Cmd: "claude"}, "coder-2": {Cmd: "codex"}}}
+	cases := map[string]string{"coder": "claude", "coder-2": "codex", "coder-3": "claude", "coder-2-2": "codex", "coder-x": "", "-2": "", "coder-": ""}
+	for name, want := range cases {
+		if r, _ := cfg.Role(name); r.Cmd != want {
+			t.Errorf("Role(%q).Cmd = %q, want %q", name, r.Cmd, want)
+		}
+	}
+}

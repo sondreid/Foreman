@@ -170,6 +170,20 @@ func RenameProjectInConfig(old, newName string) (bool, error) {
 	return true, os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
+// Role resolves a participant name to its preset. A numbered participant
+// (coder-2, the second "new coder" in a project) carries the base role's
+// preset; an exact match always wins, so a configured "coder-2" is itself.
+func (c Config) Role(name string) (Role, bool) {
+	if r, ok := c.Roles[name]; ok {
+		return r, true
+	}
+	i := strings.LastIndex(name, "-")
+	if i < 1 || i == len(name)-1 || strings.Trim(name[i+1:], "0123456789") != "" {
+		return Role{}, false
+	}
+	return c.Role(name[:i])
+}
+
 func ExpandHome(p string) string {
 	if strings.HasPrefix(p, "~/") {
 		home, _ := os.UserHomeDir()
@@ -181,8 +195,8 @@ func ExpandHome(p string) string {
 // WorkDir picks the directory for a new terminal: role dir, then project
 // root, then the caller's cwd.
 func (c Config) WorkDir(project, role string) string {
-	if d := c.Roles[role].Dir; d != "" {
-		return ExpandHome(d)
+	if r, _ := c.Role(role); r.Dir != "" {
+		return ExpandHome(r.Dir)
 	}
 	if r := c.Projects[project].Root; r != "" {
 		return ExpandHome(r)

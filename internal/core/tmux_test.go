@@ -136,3 +136,14 @@ func TestProjectColorStable(t *testing.T) {
 		t.Errorf("color not stable or empty: %q vs %q", a, b)
 	}
 }
+
+func TestFreeRoleNameNumbersDuplicates(t *testing.T) {
+	ws := []Window{{Role: "coder"}, {Role: "coder-2"}, {Name: "coder-3"}}
+	cfg := Config{Roles: map[string]Role{"coder": {}, "coder-4": {Cmd: "other"}, "planner": {}}}
+	if got := FreeRoleName(ws, cfg, "coder"); got != "coder-5" {
+		t.Errorf("got %q, want coder-5 (configured coder-4 is not free)", got)
+	}
+	if got := FreeRoleName(ws, cfg, "planner"); got != "planner" {
+		t.Errorf("got %q, want planner", got)
+	}
+}

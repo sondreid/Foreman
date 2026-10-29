@@ -31,3 +31,13 @@ func TestMenuShapeMembershipVsLabel(t *testing.T) {
 		t.Error("same structure produced different fingerprints")
 	}
 }
+
+func TestCreatedNameReadsNewOutput(t *testing.T) {
+	out := "foreman: project A (from terminal)\ncreated A/coder-2 in /Users/me/code a\n  foreman A go coder-2\n"
+	if got := createdName(out, "A", "coder"); got != "coder-2" {
+		t.Errorf("got %q, want coder-2", got)
+	}
+	if got := createdName("nothing useful", "A", "coder"); got != "coder" {
+		t.Errorf("fallback: got %q, want coder", got)
+	}
+}

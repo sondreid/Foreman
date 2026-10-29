@@ -283,28 +283,19 @@ func buildProjectMenu(p core.Project, labels map[string]string, roles []string, 
 }
 
 // buildNewParticipant fills the project's actions submenu with "New
-// participant" role entries. Roles the project already has are shown
-// disabled — new would only refuse them (issue #69).
+// participant" role entries. A role the project already has stays enabled:
+// new numbers the second one (coder-2) instead of refusing.
 func buildNewParticipant(p core.Project, header *systray.MenuItem, roles []string, d chan struct{}) {
 	menu := header.AddSubMenuItem("New participant", "start a terminal in this project")
-	have := map[string]bool{}
-	for _, w := range p.Windows {
-		have[w.RoleName()] = true
-	}
-	addRoleItems(menu, p.Name, roles, have, d)
+	addRoleItems(menu, p.Name, roles, d)
 }
 
 // addRoleItems adds one "start this role" entry per role under menu, each
-// creating a participant in project on click; roles in have are shown
-// disabled. Shared by the live-project and dormant-project menus so they
-// can't drift (issue #79 review).
-func addRoleItems(menu *systray.MenuItem, project string, roles []string, have map[string]bool, d chan struct{}) {
+// creating a participant in project on click. Shared by the live-project
+// and dormant-project menus so they can't drift (issue #79 review).
+func addRoleItems(menu *systray.MenuItem, project string, roles []string, d chan struct{}) {
 	for _, r := range roles {
 		item := menu.AddSubMenuItem(r, "")
-		if have[r] {
-			item.Disable()
-			continue
-		}
 		role := r
 		listen(item, d, func() { newParticipant(project, role) })
 	}
@@ -336,7 +327,7 @@ func buildDormant(dormant, roles []string, d chan struct{}) {
 	systray.AddMenuItem("start a project", "configured, not running").Disable()
 	for _, name := range dormant {
 		menu := systray.AddMenuItem("   "+name, "start this project")
-		addRoleItems(menu, name, roles, nil, d)
+		addRoleItems(menu, name, roles, d)
 		menu.AddSeparator()
 		addRenameItem(menu, name, d)
 	}
@@ -401,18 +392,41 @@ func addRenameItem(menu *systray.MenuItem, project string, d chan struct{}) {
 
 // newParticipant creates the terminal (fm new without a TTY creates without
 // going), then pulls it into a Terminal window — you create a terminal to
-// use it. The menu refreshes either way so it reflects whatever actually
-// happened.
+// use it. The participant opened is the one new actually made — a second
+// coder is coder-2 — so its name is read from new's output. The menu
+// refreshes either way so it reflects whatever actually happened.
 func newParticipant(project, role string) {
-	if execFm(project, "new", role) {
-		openInTerminal(project, role)
+	if out, ok := runFm(project, "new", role); ok {
+		openInTerminal(project, createdName(out, project, role))
 	}
 	requestRebuild()
+}
+
+// createdName reads the participant name from new's "created p/name in dir"
+// line, falling back to the requested role.
+func createdName(out, project, fallback string) string {
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(line, "created "+project+"/")
+		if !ok {
+			continue
+		}
+		if name, _, found := strings.Cut(rest, " in "); found {
+			return name
+		}
+	}
+	return fallback
 }
 
 // execFm runs an fm verb silently and reports whether it succeeded; a
 // failure surfaces the CLI's own message as a notification.
 func execFm(args ...string) bool {
+	_, ok := runFm(args...)
+	return ok
+}
+
+// runFm runs an fm verb and returns its combined output; a failure surfaces
+// the CLI's own message as a notification.
+func runFm(args ...string) (string, bool) {
 	cmd := exec.Command(fmBinary(), args...)
 	// The explorer's own cwd is meaningless ("/" under launchd) — run fm
 	// from $HOME so new's cwd fallback for a project with no configured
@@ -422,14 +436,14 @@ func execFm(args ...string) bool {
 	}
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		return true
+		return string(out), true
 	}
 	msg := strings.TrimSpace(string(out))
 	if msg == "" {
 		msg = err.Error()
 	}
 	notify(msg)
-	return false
+	return "", false
 }
 
 // listen fires fn on every click of item until this menu generation is torn

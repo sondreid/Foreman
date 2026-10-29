@@ -21,6 +21,7 @@ func TestStateOfReliableSignals(t *testing.T) {
 	}{
 		{"dead pane", Window{Role: "coder", Command: "zsh", Dead: true}, StateExited},
 		{"role cmd finished", Window{Role: "coder", Command: "zsh"}, StateDone},
+		{"numbered participant finished", Window{Role: "coder-2", Command: "zsh"}, StateDone},
 		{"login shell counts too", Window{Role: "coder", Command: "-zsh"}, StateDone},
 		{"manual terminal", Window{Role: "human", Command: "zsh"}, StateShell},
 		{"unknown role at shell", Window{Role: "scratch", Command: "bash"}, StateShell},

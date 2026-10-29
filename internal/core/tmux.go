@@ -125,6 +125,25 @@ func FindWindow(project, role string) (Window, error) {
 	return Window{}, fmt.Errorf("no terminal %q in project %s (have: %s)", role, project, strings.Join(have, ", "))
 }
 
+// FreeRoleName picks the name for a new participant: role itself when the
+// project has none, else the first free role-2, role-3, … — a second "new
+// coder" is a second coder, numbered, not a refusal. A configured role's
+// name is never generated: a window tagged coder-2 reads as that preset.
+func FreeRoleName(ws []Window, cfg Config, role string) string {
+	taken := map[string]bool{}
+	for _, w := range ws {
+		taken[w.RoleName()] = true
+	}
+	name := role
+	for r := range cfg.Roles {
+		taken[r] = taken[r] || r != role
+	}
+	for n := 2; taken[name]; n++ {
+		name = fmt.Sprintf("%s-%d", role, n)
+	}
+	return name
+}
+
 // DetachOtherClients drops every client viewing the project except the one
 // this command runs in.
 func DetachOtherClients(project string) {
