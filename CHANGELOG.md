@@ -10,6 +10,16 @@ minor = features (breaking changes allowed), patch = fixes.
 
 ### Added
 
+- **Participants survive a tmux server restart.** `new` journals each participant
+  (project, name, directory, and a fresh id exported into the terminal as `$FM_SESSION`)
+  under `~/.local/state/foreman/participants/`; `done` and `rename` keep the journal in
+  step. `foreman restore` (all projects) or `foreman <project> restore` recreates the
+  terminals the server took down with it, re-running each role preset with the same
+  `$FM_SESSION`, so a preset such as `claude --resume $FM_SESSION || claude --session-id
+  $FM_SESSION` resumes its conversation after a power-down. The journal is the one file
+  foreman keeps, and only `restore` reads it: a window closed by `exit` or kill-window
+  under the running server is forgotten rather than brought back, judged by the server's
+  start time (one closed that way right before a power-down still comes back).
 - **The terminal app is configurable.** `[terminal] app` in the config picks where foreman
   opens windows (explorer clicks, `go --window`): `terminal` for Terminal.app, still the
   default when unset, or `ghostty` (1.3+). Ghostty windows are not tracked — Ghostty exposes

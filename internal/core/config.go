@@ -107,6 +107,11 @@ cmd = "claude"
 [role.agent]
 cmd = "claude"
 
+# Every terminal gets a $FM_SESSION id that "restore" hands back after a
+# tmux server restart; a cmd that resumes by it survives a power-down:
+# [role.coder]
+# cmd = "claude --resume $FM_SESSION || claude --session-id $FM_SESSION"
+
 # [role.server]
 # cmd = "npm run dev"
 # dir = "~/code/project-a"        # role-specific directory, overrides project root

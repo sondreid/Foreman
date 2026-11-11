@@ -39,5 +39,8 @@ func RenameProject(old, newName string) error {
 		}
 		return err
 	}
+	if err := RenameParticipants(old, newName); err != nil {
+		return fmt.Errorf("renamed, but the restore journal in %s was not: %w", StateDir(), err)
+	}
 	return nil
 }

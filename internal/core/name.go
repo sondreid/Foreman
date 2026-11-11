@@ -12,7 +12,7 @@ import (
 // verb switch and projectVerbs map in cmd/foreman/main.go.
 var reservedProjectNames = map[string]bool{
 	"new": true, "go": true, "adopt": true, "done": true, "pin": true, "unpin": true,
-	"rename": true, "list": true, "init": true, "help": true,
+	"rename": true, "restore": true, "list": true, "init": true, "help": true,
 }
 
 // ValidateProjectName rejects names foreman could never work with: tmux

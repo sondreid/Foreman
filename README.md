@@ -27,6 +27,7 @@ foreman <project> adopt <role>   pull the terminal you're in into the project (w
 foreman <project> done [role]    close one terminal, or the whole project
 foreman <project> pin|unpin      mark the project as priority (sorts first in list)
 foreman <project> rename <name>  give the project a new name (updates config too)
+foreman restore [project]        recreate the terminals a tmux server restart took down
 ```
 
 The project name can be omitted — `foreman new coder` infers it: inside a
@@ -73,8 +74,35 @@ $ foreman list
 - **Accidental close is harmless**: closing a terminal window only detaches a
   client; the session lives on in the tmux server. The only real teardown is the
   explicit `done` verb (whole-project `done` asks for confirmation).
-- All state lives in the tmux server (user options `@fm_project`, `@fm_role`,
-  `@fm_priority`) — no state files, nothing to drift out of sync.
+- All live state is in the tmux server (user options `@fm_project`, `@fm_role`,
+  `@fm_priority`), nothing to drift out of sync. The one file is the restore
+  journal below, and nothing but `restore` reads it.
+
+## Surviving a reboot
+
+The tmux server dies with the machine, and every terminal with it. `new`
+records what it was asked for (project, name, directory, and a fresh id it
+exports into the terminal as `$FM_SESSION`) in
+`~/.local/state/foreman/participants/`; `done` and `rename` keep that journal
+in step. After a reboot, `foreman restore` (or `foreman <project> restore`)
+recreates every terminal the server took down with it, runs its role preset
+again, and hands it the same `$FM_SESSION`. A preset written to resume by
+that id picks up where it left off:
+
+```
+[role.coder]
+cmd = "claude --resume $FM_SESSION || claude --session-id $FM_SESSION"
+```
+
+The first `new` falls through to `--session-id` (no such conversation yet);
+`restore` finds it. A tool with no launch-time id, such as Codex, gets its
+terminal and directory back and starts fresh — resume it from its own
+picker. Known gaps: `/clear` in Claude Code starts a new conversation that
+restore does not know about (it resumes the one before the clear, the newer
+one stays in the picker). A terminal closed by `exit` or outside foreman,
+rather than by `done`, is forgotten by the next `restore` that runs on the
+same server, but one closed that way right before a power-down comes back —
+`done` it. Pins and `adopt`ed terminals are not journaled.
 
 ## Install
 

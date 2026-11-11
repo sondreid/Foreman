@@ -23,6 +23,11 @@ usage:
   foreman <project> done [role]    close one terminal, or the whole project
   foreman <project> pin|unpin      mark the project as priority
   foreman <project> rename <name>  give the project a new name (updates config too)
+  foreman restore [project]        recreate the terminals a tmux server restart took
+                                   down (power-down); the role preset runs again with
+                                   the same $FM_SESSION, so a cmd written as
+                                   "claude --resume $FM_SESSION || claude --session-id
+                                   $FM_SESSION" resumes its conversation
 
 <project> can be omitted (foreman new coder): inferred from the managed
 terminal you're in, else the configured root containing the current
@@ -49,6 +54,15 @@ func main() {
 	}
 	if args[0] == "init" {
 		fail(cmdInit())
+		return
+	}
+	// Like bare list: no project means every project.
+	if args[0] == "restore" {
+		project := ""
+		if len(args) > 1 {
+			project = args[1]
+		}
+		fail(cmdRestore(project))
 		return
 	}
 	// Plumbing for the status-bar ticker (set up by StyleSession); not part
@@ -114,6 +128,8 @@ func main() {
 	case "rename":
 		requireArg(verb, arg, "name")
 		fail(cmdRename(project, arg))
+	case "restore":
+		fail(cmdRestore(project))
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", verb, usage)
 		os.Exit(2)

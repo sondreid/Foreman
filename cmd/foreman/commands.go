@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"text/tabwriter"
+	"time"
 
 	"golang.org/x/term"
 
@@ -31,47 +32,22 @@ func cmdNew(project, role string) error {
 		return err
 	}
 	cfg := core.LoadConfig()
-	dir := cfg.WorkDir(project, role)
 	name := role
-	var wid string
-	var err error
-	if !core.SessionExists(project) {
-		wid, err = core.Tmux("new-session", "-d", "-s", core.SessionName(project), "-n", name,
-			"-c", dir, "-P", "-F", "#{window_id}")
-	} else {
-		ws, lerr := core.ListWindows(project)
-		if lerr != nil {
-			return lerr
+	if core.SessionExists(project) {
+		ws, err := core.ListWindows(project)
+		if err != nil {
+			return err
 		}
 		name = core.FreeRoleName(ws, cfg, role)
-		// -d: create in the background. Without it, new from inside an
-		// attached terminal jumps the view before the go prompt below has
-		// asked (issue #54) — moving the view is go's job alone.
-		wid, err = core.Tmux("new-window", "-d", "-t", "="+core.SessionName(project), "-n", name,
-			"-c", dir, "-P", "-F", "#{window_id}")
 	}
-	if err != nil {
+	dir := cfg.WorkDir(project, role)
+	if err := createParticipant(cfg, project, name, dir, core.NewSessionID()); err != nil {
 		return err
-	}
-	core.Tmux("set-option", "-w", "-t", wid, "@fm_role", name)
-	core.Tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
-	core.StyleSession(project)
-
-	// Role commands run inside the shell (not as the window command) so the
-	// window survives the process exiting.
-	preset, known := cfg.Role(role)
-	if preset.Cmd != "" {
-		if _, err := core.Tmux("send-keys", "-t", wid, "-l", preset.Cmd); err != nil {
-			return err
-		}
-		if _, err := core.Tmux("send-keys", "-t", wid, "Enter"); err != nil {
-			return err
-		}
 	}
 	fmt.Printf("created %s/%s in %s\n", project, name, dir)
 	// Only unknown roles get the notice — a role deliberately configured
 	// without a cmd (a named plain shell) already explained itself.
-	if !known {
+	if _, known := cfg.Role(role); !known {
 		fmt.Printf("note: role %q has no cmd in %s — opened a plain shell\n", role, core.ConfigPath())
 	}
 	// The typical next step is go, so offer it. Only on a TTY — scripted
@@ -91,6 +67,107 @@ func cmdNew(project, role string) error {
 	}
 	if !core.InsideTmux() {
 		fmt.Printf("  foreman %s go %s   # to jump there\n", project, name)
+	}
+	return nil
+}
+
+// createParticipant is the window-making half of new, shared with restore:
+// the window (minting the session when it is the project's first), its
+// role tag, the preset typed into its shell, and the journal entry restore
+// will replay. id reaches the shell as FM_SESSION so the preset can resume
+// by it (claude --resume $FM_SESSION || claude --session-id $FM_SESSION).
+func createParticipant(cfg core.Config, project, name, dir, id string) error {
+	env := "FM_SESSION=" + id
+	var wid string
+	var err error
+	if !core.SessionExists(project) {
+		wid, err = core.Tmux("new-session", "-d", "-s", core.SessionName(project), "-n", name,
+			"-c", dir, "-e", env, "-P", "-F", "#{window_id}")
+	} else {
+		// -d: create in the background. Without it, new from inside an
+		// attached terminal jumps the view before the go prompt below has
+		// asked (issue #54) — moving the view is go's job alone.
+		wid, err = core.Tmux("new-window", "-d", "-t", "="+core.SessionName(project), "-n", name,
+			"-c", dir, "-e", env, "-P", "-F", "#{window_id}")
+	}
+	if err != nil {
+		return err
+	}
+	core.Tmux("set-option", "-w", "-t", wid, "@fm_role", name)
+	core.Tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
+	core.StyleSession(project)
+
+	// Role commands run inside the shell (not as the window command) so the
+	// window survives the process exiting.
+	if preset, _ := cfg.Role(name); preset.Cmd != "" {
+		if _, err := core.Tmux("send-keys", "-t", wid, "-l", preset.Cmd); err != nil {
+			return err
+		}
+		if _, err := core.Tmux("send-keys", "-t", wid, "Enter"); err != nil {
+			return err
+		}
+	}
+	p := core.Participant{ID: id, Project: project, Name: name, Dir: dir, Created: time.Now().Unix()}
+	if err := core.RecordParticipant(p); err != nil {
+		fmt.Fprintf(os.Stderr, "foreman: %s/%s will not survive a tmux server restart: %v\n", project, name, err)
+	}
+	return nil
+}
+
+// cmdRestore brings back the participants the tmux server took down with
+// it — after a power-down, every journaled participant; otherwise only those
+// older than the running server (issue: resume across reboots). Entries
+// whose window was closed on purpose are forgotten instead. Never prompts,
+// so a whole project comes back in one go.
+func cmdRestore(project string) error {
+	all, err := core.Participants()
+	if err != nil {
+		return err
+	}
+	cfg := core.LoadConfig()
+	serverStart := core.ServerStart()
+	byProject := map[string][]core.Participant{}
+	var order []string
+	for _, p := range all {
+		if project != "" && p.Project != project {
+			continue
+		}
+		if _, seen := byProject[p.Project]; !seen {
+			order = append(order, p.Project)
+		}
+		byProject[p.Project] = append(byProject[p.Project], p)
+	}
+	restored := 0
+	for _, name := range order {
+		live := map[string]bool{}
+		if core.SessionExists(name) {
+			ws, _ := core.ListWindows(name)
+			for _, w := range ws {
+				live[w.RoleName()] = true
+			}
+		}
+		restore, stale := core.PlanRestore(byProject[name], live, serverStart)
+		for _, p := range stale {
+			core.ForgetParticipant(p.ID)
+			if p.Survived(serverStart) {
+				fmt.Printf("%s/%s: dropped an older record (FM_SESSION was %s)\n", name, p.Name, p.ID)
+			}
+		}
+		for _, p := range restore {
+			if _, err := os.Stat(p.Dir); err != nil {
+				fmt.Printf("%s/%s: directory %s is gone — not restored\n", name, p.Name, p.Dir)
+				continue
+			}
+			if err := createParticipant(cfg, name, p.Name, p.Dir, p.ID); err != nil {
+				fmt.Printf("%s/%s: %v\n", name, p.Name, err)
+				continue
+			}
+			fmt.Printf("restored %s/%s in %s\n", name, p.Name, p.Dir)
+			restored++
+		}
+	}
+	if restored == 0 {
+		fmt.Println("nothing to restore")
 	}
 	return nil
 }
@@ -268,6 +345,9 @@ func cmdDone(project, role string) error {
 		if err != nil {
 			return err
 		}
+		// Forget first: run from inside the window, this process dies with
+		// the kill, and a surviving entry would come back on restore.
+		core.ForgetParticipants(project, w.RoleName())
 		if _, err := core.Tmux("kill-window", "-t", w.ID); err != nil {
 			return err
 		}
@@ -290,6 +370,7 @@ func cmdDone(project, role string) error {
 	// pane with it — so a detached worker does the closing (issue #46).
 	viewers, _ := core.Tmux("list-clients", "-t", core.SessionName(project), "-F", "#{client_name}")
 	spawnCloseWorker(strings.Split(viewers, "\n"))
+	core.ForgetParticipants(project, "")
 	if _, err := core.Tmux("kill-session", "-t", "="+core.SessionName(project)); err != nil {
 		return err
 	}
