@@ -122,6 +122,7 @@ cmd = "claude"
 
 # The app foreman opens windows in (explorer clicks, go --window).
 # Supported: "terminal" (Terminal.app, used when unset), "ghostty" (1.3+).
+# On Linux only "ghostty" works, and it must be set.
 # [terminal]
 # app = "terminal"
 `

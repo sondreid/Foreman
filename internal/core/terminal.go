@@ -3,8 +3,11 @@ package core
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -60,10 +63,32 @@ var runOsascript = func(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+// goos picks the launch path; a seam so tests pin either platform.
+var goos = runtime.GOOS
+
 // OpenTerminal opens a window running shellCmd in the configured terminal
 // app: "terminal" (Terminal.app, also when unset) or "ghostty". An unknown
-// app is an error rather than a silent fallback.
+// app is an error rather than a silent fallback. Off macOS there is no
+// AppleScript, so only ghostty is launched, through its CLI; on failure the
+// window waits for Enter so the error stays readable.
 func OpenTerminal(app, shellCmd string) error {
+	if goos != "darwin" {
+		if app != "ghostty" {
+			return fmt.Errorf("terminal app %q is not supported on %s; set app = \"ghostty\" under [terminal] in %s", app, goos, ConfigPath())
+		}
+		cmd := exec.Command("ghostty", "-e", "sh", "-c", shellCmd+" || read -r _")
+		cmd.Env = append(os.Environ(), "TMUX=", "TMUX_PANE=")
+		cmd.Stderr = log.Writer()
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		go func() {
+			if err := cmd.Wait(); err != nil {
+				log.Printf("ghostty: %v", err)
+			}
+		}()
+		return nil
+	}
 	switch app {
 	case "", "terminal":
 		return openTermWindow(shellCmd)

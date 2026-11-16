@@ -12,8 +12,9 @@ var errFake = errors.New("fake tmux failure")
 func recordCalls(t *testing.T, tmuxOut func(args []string) (string, bool), osaOut string) (tmuxCalls, osaCalls *[]string) {
 	t.Helper()
 	var tc, oc []string
-	origT, origO := tmuxRun, runOsascript
-	t.Cleanup(func() { tmuxRun, runOsascript = origT, origO })
+	origT, origO, origG := tmuxRun, runOsascript, goos
+	t.Cleanup(func() { tmuxRun, runOsascript, goos = origT, origO, origG })
+	goos = "darwin"
 	tmuxRun = func(args ...string) ([]byte, error) {
 		tc = append(tc, strings.Join(args, " "))
 		if out, ok := tmuxOut(args); ok {

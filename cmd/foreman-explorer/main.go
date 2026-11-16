@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -77,8 +78,14 @@ func setupCrashLog() {
 //go:embed icon-template.png
 var iconTemplate []byte
 
+// Linux trays use the regular icon as-is, with no recoloring; the mark in
+// white reads on the dark panels most desktops ship.
+//
+//go:embed icon-light.png
+var iconLight []byte
+
 func onReady() {
-	systray.SetTemplateIcon(iconTemplate, iconTemplate)
+	systray.SetTemplateIcon(iconTemplate, iconLight)
 	systray.SetTooltip("foreman — terminals by project")
 	// All menu work happens on this one goroutine — the timer and manual
 	// Refresh both feed it, so the done channel and the systray menu are
@@ -539,9 +546,14 @@ func promptText(msg, def, ok string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// notify posts a macOS notification; the message travels as an osascript
-// argument, never interpolated into the script (same rule as issue #30).
+// notify posts a desktop notification: notify-send off macOS, else
+// osascript with the message as an argument, never interpolated into the
+// script (same rule as issue #30).
 func notify(msg string) {
+	if runtime.GOOS != "darwin" {
+		exec.Command("notify-send", "foreman", msg).Run()
+		return
+	}
 	exec.Command("osascript",
 		"-e", "on run argv",
 		"-e", `display notification (item 1 of argv) with title "foreman"`,
